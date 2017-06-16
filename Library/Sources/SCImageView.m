@@ -231,6 +231,39 @@
     return [image imageByApplyingTransform:CGAffineTransformMakeScale(horizontalScale, verticalScale)];
 }
 
+- (CGRect)boundsForScaledAndResizedCIImage:(CIImage *)image forRect:(CGRect)rect {
+    CGRect destinationRect = rect;
+
+    CGFloat imageRatio = image.extent.size.width / image.extent.size.height;
+    CGFloat rectRatio = destinationRect.size.width / destinationRect.size.height;
+
+    CGFloat newXOrigin = rect.origin.x;
+    CGFloat newYOrigin = rect.origin.y;
+    CGFloat newWidth = rect.size.width;
+    CGFloat newHeight = rect.size.height;
+
+    if (self.contentMode == UIViewContentModeScaleAspectFit) {
+        if (imageRatio < rectRatio) {
+            newWidth = rect.size.height * imageRatio;
+        } else {
+            newHeight = rect.size.width / imageRatio;
+        }
+    } else if (self.contentMode == UIViewContentModeScaleAspectFill) {
+        if (imageRatio > rectRatio) {
+            newWidth = rect.size.height * imageRatio;
+        } else {
+            newHeight = rect.size.width / imageRatio;
+        }
+    }
+
+    newXOrigin = (rect.size.width - newWidth) * 0.5;
+    newYOrigin = (rect.size.height - newHeight) * 0.5;
+
+    destinationRect = CGRectMake(newXOrigin, newYOrigin, newWidth, newHeight);
+
+    return destinationRect;
+}
+
 - (void)drawRect:(CGRect)rect {
     [super drawRect:rect];
 
@@ -347,8 +380,14 @@ static CGRect CGRectMultiply(CGRect rect, CGFloat contentScale) {
 
         CIImage *image = [self renderedCIImageInRect:rect];
 
+        CGRect destinationRect = rect;
+
+        if (self.scaleAndResizeCIImageAutomatically) {
+            destinationRect = [self boundsForScaledAndResizedCIImage:image forRect:rect];
+        }
+
         if (image != nil) {
-            [_context.CIContext drawImage:image inRect:rect fromRect:image.extent];
+            [_context.CIContext drawImage:image inRect:destinationRect fromRect:image.extent];
         }
     }
 }

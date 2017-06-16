@@ -578,18 +578,72 @@ static CGContextRef SCCreateContextFromPixelBuffer(CVPixelBufferRef pixelBuffer)
     }
 }
 
+- (UIInterfaceOrientation)orientationForTrack:(AVAssetTrack *)track {
+    UIInterfaceOrientation orientation = UIInterfaceOrientationPortrait;
+
+    CGAffineTransform t = track.preferredTransform;
+
+    // Portrait
+    if(t.a == 0 && t.b == -1.0 && t.c == 1.0 && t.d == 0) {
+        orientation = UIInterfaceOrientationPortrait;
+    }
+    // PortraitUpsideDown
+    if(t.a == 0 && t.b == 1.0 && t.c == -1.0 && t.d == 0) {
+        orientation = UIInterfaceOrientationPortraitUpsideDown;
+    }
+    // LandscapeRight
+    if(t.a == 1.0 && t.b == 0 && t.c == 0 && t.d == 1.0) {
+        orientation = UIInterfaceOrientationLandscapeRight;
+    }
+    // LandscapeLeft
+    if(t.a == -1.0 && t.b == 0 && t.c == 0 && t.d == -1.0) {
+        orientation = UIInterfaceOrientationLandscapeLeft;
+    }
+    return orientation;
+}
+
+- (CGAffineTransform)transformBasedOnTrack:(AVAssetTrack *)track {
+    UIInterfaceOrientation orientation = [self orientationForTrack:track];
+    CGSize naturalSize = track.naturalSize;
+    CGAffineTransform finalTranform = CGAffineTransformIdentity;
+
+    switch (orientation) {
+        case UIInterfaceOrientationLandscapeLeft:
+            finalTranform = CGAffineTransformMake(-1, 0, 0, -1, naturalSize.width, naturalSize.height);
+            break;
+        case UIInterfaceOrientationLandscapeRight:
+            finalTranform = CGAffineTransformMake(1, 0, 0, 1, 0, 0);
+            break;
+        case UIInterfaceOrientationPortrait:
+            finalTranform = CGAffineTransformMake(0, 1, -1, 0, naturalSize.height, 0);
+            break;
+        case UIInterfaceOrientationPortraitUpsideDown:
+            finalTranform = CGAffineTransformMake(0, -1, 1, 0, 0, naturalSize.width);
+            break;
+        default:
+            break;
+    }
+    return finalTranform;
+}
+
 - (void)_setupVideoUsingTracks:(NSArray *)videoTracks {
     _inputBufferSize = CGSizeZero;
     if (videoTracks.count > 0 && self.videoConfiguration.enabled && !self.videoConfiguration.shouldIgnore) {
         AVAssetTrack *videoTrack = [videoTracks objectAtIndex:0];
 
         // Input
-        NSDictionary *videoSettings = [_videoConfiguration createAssetWriterOptionsWithVideoSize:videoTrack.naturalSize];
-
-        _videoInput = [self addWriter:AVMediaTypeVideo withSettings:videoSettings];
         if (_videoConfiguration.keepInputAffineTransform) {
-            _videoInput.transform = videoTrack.preferredTransform;
+            CGSize naturalSizeFirst = videoTrack.naturalSize;
+
+            CGSize temp = CGSizeApplyAffineTransform(naturalSizeFirst, [self transformBasedOnTrack:videoTrack]);
+            CGSize size = CGSizeMake(fabs(temp.width), fabs(temp.height));
+
+            NSDictionary *videoSettings = [_videoConfiguration createAssetWriterOptionsWithVideoSize:size];
+            _videoInput = [self addWriter:AVMediaTypeVideo withSettings:videoSettings];
         } else {
+            NSDictionary *videoSettings = [_videoConfiguration createAssetWriterOptionsWithVideoSize:videoTrack.naturalSize];
+            _videoInput = [self addWriter:AVMediaTypeVideo withSettings:videoSettings];
+
             _videoInput.transform = _videoConfiguration.affineTransform;
         }
 

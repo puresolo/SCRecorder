@@ -271,27 +271,65 @@ static char* LoadedTimeRanges = "LoadedTimeRanges";
 
             transform = track.preferredTransform;
 
-            // Return the video if it is upside down
-            if (transform.b == 1 && transform.c == -1) {
-                transform = CGAffineTransformRotate(transform, M_PI);
+            if ([self orientationForTrack:track] == UIInterfaceOrientationPortraitUpsideDown) {
+                transform = [self transformBasedOnTrack:track];
             }
 
             if (self.autoRotate) {
-                CGSize videoSize = track.naturalSize;
-                CGSize viewSize =  [renderer frame].size;
-                CGRect outRect = CGRectApplyAffineTransform(CGRectMake(0, 0, videoSize.width, videoSize.height), transform);
-
-                BOOL viewIsWide = viewSize.width / viewSize.height > 1;
-                BOOL videoIsWide = outRect.size.width / outRect.size.height > 1;
-
-                if (viewIsWide != videoIsWide) {
-                    transform = CGAffineTransformRotate(transform, M_PI_2);
-                }
+                transform = [self transformBasedOnTrack:track];
             }
         }
         _rendererTransform = transform;
         _rendererWasSetup = NO;
     }
+}
+
+- (UIInterfaceOrientation)orientationForTrack:(AVAssetTrack *)track {
+    UIInterfaceOrientation orientation = UIInterfaceOrientationPortrait;
+
+    CGAffineTransform t = track.preferredTransform;
+
+    // Portrait
+    if(t.a == 0 && t.b == -1.0 && t.c == 1.0 && t.d == 0) {
+        orientation = UIInterfaceOrientationPortrait;
+    }
+    // PortraitUpsideDown
+    if(t.a == 0 && t.b == 1.0 && t.c == -1.0 && t.d == 0) {
+        orientation = UIInterfaceOrientationPortraitUpsideDown;
+    }
+    // LandscapeRight
+    if(t.a == 1.0 && t.b == 0 && t.c == 0 && t.d == 1.0) {
+        orientation = UIInterfaceOrientationLandscapeRight;
+    }
+    // LandscapeLeft
+    if(t.a == -1.0 && t.b == 0 && t.c == 0 && t.d == -1.0) {
+        orientation = UIInterfaceOrientationLandscapeLeft;
+    }
+    return orientation;
+}
+
+- (CGAffineTransform)transformBasedOnTrack:(AVAssetTrack *)track {
+    UIInterfaceOrientation orientation = [self orientationForTrack:track];
+    CGSize naturalSize = track.naturalSize;
+    CGAffineTransform finalTranform = CGAffineTransformIdentity;
+
+    switch (orientation) {
+        case UIInterfaceOrientationLandscapeLeft:
+            finalTranform = CGAffineTransformMake(-1, 0, 0, -1, naturalSize.width, naturalSize.height);
+            break;
+        case UIInterfaceOrientationLandscapeRight:
+            finalTranform = CGAffineTransformMake(1, 0, 0, 1, 0, 0);
+            break;
+        case UIInterfaceOrientationPortrait:
+            finalTranform = CGAffineTransformMake(0, 1, -1, 0, naturalSize.height, 0);
+            break;
+        case UIInterfaceOrientationPortraitUpsideDown:
+            finalTranform = CGAffineTransformMake(0, -1, 1, 0, 0, naturalSize.width);
+            break;
+        default:
+            break;
+    }
+    return finalTranform;
 }
 
 - (void)unsetupVideoOutputToItem:(AVPlayerItem *)item {
