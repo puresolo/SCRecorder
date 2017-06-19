@@ -484,8 +484,8 @@ static CGContextRef SCCreateContextFromPixelBuffer(CVPixelBufferRef pixelBuffer)
     });
 }
 
-- (SCFilter *)_generateRenderingFilterForVideoSize:(CGSize)videoSize {
-    SCFilter *watermarkFilter = [self _buildWatermarkFilterForVideoSize:videoSize];
+- (SCFilter *)_generateRenderingFilterForVideoSize:(CGSize)videoSize offset:(CGFloat)offset {
+    SCFilter *watermarkFilter = [self _buildWatermarkFilterForVideoSize:videoSize offset:offset];
     SCFilter *renderingFilter = nil;
     SCFilter *customFilter = self.videoConfiguration.filter;
 
@@ -509,7 +509,7 @@ static CGContextRef SCCreateContextFromPixelBuffer(CVPixelBufferRef pixelBuffer)
 }
 
 
-- (SCFilter *)_buildWatermarkFilterForVideoSize:(CGSize)videoSize {
+- (SCFilter *)_buildWatermarkFilterForVideoSize:(CGSize)videoSize offset:(CGFloat)offset {
     UIImage *watermarkImage = self.videoConfiguration.watermarkImage;
 
     if (watermarkImage != nil) {
@@ -541,6 +541,7 @@ static CGContextRef SCCreateContextFromPixelBuffer(CVPixelBufferRef pixelBuffer)
         UIGraphicsEndImageContext();
 
         CIImage *watermarkCIImage = [CIImage imageWithCGImage:generatedWatermarkImage.CGImage];
+        watermarkCIImage = [watermarkCIImage imageByApplyingTransform:CGAffineTransformMakeTranslation(offset, 0.0)];
         return [SCFilter filterWithCIImage:watermarkCIImage];
     }
 
@@ -630,28 +631,42 @@ static CGContextRef SCCreateContextFromPixelBuffer(CVPixelBufferRef pixelBuffer)
     _inputBufferSize = CGSizeZero;
     if (videoTracks.count > 0 && self.videoConfiguration.enabled && !self.videoConfiguration.shouldIgnore) {
         AVAssetTrack *videoTrack = [videoTracks objectAtIndex:0];
-
+        CGFloat watermarkXOffset = 0.0;
         // Input
         if (_videoConfiguration.keepInputAffineTransform) {
-            CGSize naturalSizeFirst = videoTrack.naturalSize;
+            if ([self orientationForTrack:videoTrack] == UIInterfaceOrientationLandscapeLeft || [self orientationForTrack:videoTrack] == UIInterfaceOrientationLandscapeRight) {
+                CGFloat ratio = videoTrack.naturalSize.height / videoTrack.naturalSize.width;
+                CGSize size = CGSizeMake(videoTrack.naturalSize.height * ratio, videoTrack.naturalSize.height);
 
-            CGSize temp = CGSizeApplyAffineTransform(naturalSizeFirst, [self transformBasedOnTrack:videoTrack]);
-            CGSize size = CGSizeMake(fabs(temp.width), fabs(temp.height));
+                NSDictionary *videoSettings = [_videoConfiguration createAssetWriterOptionsWithVideoSize:size];
+                _videoInput = [self addWriter:AVMediaTypeVideo withSettings:videoSettings];
 
-            NSDictionary *videoSettings = [_videoConfiguration createAssetWriterOptionsWithVideoSize:size];
-            _videoInput = [self addWriter:AVMediaTypeVideo withSettings:videoSettings];
+                _inputBufferSize = size;
+
+                watermarkXOffset = (videoTrack.naturalSize.width - size.width) / 2.0;
+            } else {
+                CGSize naturalSizeFirst = videoTrack.naturalSize;
+
+                CGSize temp = CGSizeApplyAffineTransform(naturalSizeFirst, [self transformBasedOnTrack:videoTrack]);
+                CGSize size = CGSizeMake(fabs(temp.width), fabs(temp.height));
+
+                NSDictionary *videoSettings = [_videoConfiguration createAssetWriterOptionsWithVideoSize:size];
+                _videoInput = [self addWriter:AVMediaTypeVideo withSettings:videoSettings];
+
+                _inputBufferSize = size;
+            }
         } else {
             NSDictionary *videoSettings = [_videoConfiguration createAssetWriterOptionsWithVideoSize:videoTrack.naturalSize];
             _videoInput = [self addWriter:AVMediaTypeVideo withSettings:videoSettings];
 
             _videoInput.transform = _videoConfiguration.affineTransform;
+
+            _inputBufferSize = videoTrack.naturalSize;
         }
 
         // Output
         AVVideoComposition *videoComposition = self.videoConfiguration.composition;
-        if (videoComposition == nil) {
-            _inputBufferSize = videoTrack.naturalSize;
-        } else {
+        if (videoComposition != nil) {
             _inputBufferSize = videoComposition.renderSize;
         }
 
@@ -663,7 +678,7 @@ static CGContextRef SCCreateContextFromPixelBuffer(CVPixelBufferRef pixelBuffer)
         _outputBufferSize = outputBufferSize;
         _outputBufferDiffersFromInput = !CGSizeEqualToSize(_inputBufferSize, outputBufferSize);
 
-        _filter = [self _generateRenderingFilterForVideoSize:outputBufferSize];
+        _filter = [self _generateRenderingFilterForVideoSize:outputBufferSize offset: watermarkXOffset];
 
         if (videoComposition == nil && _filter != nil && self.translatesFilterIntoComposition) {
             videoComposition = [_filter videoCompositionWithAsset:_inputAsset];
