@@ -631,19 +631,23 @@ static CGContextRef SCCreateContextFromPixelBuffer(CVPixelBufferRef pixelBuffer)
     _inputBufferSize = CGSizeZero;
     if (videoTracks.count > 0 && self.videoConfiguration.enabled && !self.videoConfiguration.shouldIgnore) {
         AVAssetTrack *videoTrack = [videoTracks objectAtIndex:0];
+        CGSize videoNaturalSize = videoTrack.naturalSize;
         CGFloat watermarkXOffset = 0.0;
+
+        UIInterfaceOrientation orientationForTrack = [self orientationForTrack:videoTrack];
+
         // Input
         if (_videoConfiguration.keepInputAffineTransform) {
-            if ([self orientationForTrack:videoTrack] == UIInterfaceOrientationLandscapeLeft || [self orientationForTrack:videoTrack] == UIInterfaceOrientationLandscapeRight) {
-                CGFloat ratio = videoTrack.naturalSize.height / videoTrack.naturalSize.width;
-                CGSize size = CGSizeMake(videoTrack.naturalSize.height * ratio, videoTrack.naturalSize.height);
+            if ((orientationForTrack == UIInterfaceOrientationLandscapeLeft || orientationForTrack == UIInterfaceOrientationLandscapeRight) && videoNaturalSize.height < videoNaturalSize.width) {
+                CGFloat ratio = videoNaturalSize.height / videoNaturalSize.width;
+                CGSize size = CGSizeMake(videoNaturalSize.height * ratio, videoNaturalSize.height);
 
                 NSDictionary *videoSettings = [_videoConfiguration createAssetWriterOptionsWithVideoSize:size];
                 _videoInput = [self addWriter:AVMediaTypeVideo withSettings:videoSettings];
 
                 _inputBufferSize = size;
 
-                watermarkXOffset = (videoTrack.naturalSize.width - size.width) / 2.0;
+                watermarkXOffset = (videoNaturalSize.width - size.width) / 2.0;
             } else {
                 CGSize naturalSizeFirst = videoTrack.naturalSize;
 
@@ -656,12 +660,12 @@ static CGContextRef SCCreateContextFromPixelBuffer(CVPixelBufferRef pixelBuffer)
                 _inputBufferSize = size;
             }
         } else {
-            NSDictionary *videoSettings = [_videoConfiguration createAssetWriterOptionsWithVideoSize:videoTrack.naturalSize];
+            NSDictionary *videoSettings = [_videoConfiguration createAssetWriterOptionsWithVideoSize:videoNaturalSize];
             _videoInput = [self addWriter:AVMediaTypeVideo withSettings:videoSettings];
 
             _videoInput.transform = _videoConfiguration.affineTransform;
-
-            _inputBufferSize = videoTrack.naturalSize;
+            
+            _inputBufferSize = videoNaturalSize;
         }
 
         // Output
